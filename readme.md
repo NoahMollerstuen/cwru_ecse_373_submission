@@ -1,6 +1,6 @@
 # Lab 5
 ## Ariac Environemnt Setup
-This lab uses the 2019 ARIAC simulation environemnt developed by the Open Source Robotics Foundation. To find out more about the ARIAC environement, read the documentation [here](https://bitbucket.org/osrf/ariac/wiki/2019/Home)
+This lab uses the 2019 ARIAC simulation environemnt developed by the Open Source Robotics Foundation. To find out more about the ARIAC environement, read the documentation [here](https://bitbucket.org/osrf/ariac/wiki/2019/Home).
 
 
 To run the simulation, you will need this course's ARIAC package which can be found [here](https://github.com/cwru-eecs-373/ecse_373_ariac). After installing the package, run `roslaunch ecse_373_ariac ecse_373_ariac.launch python:=false &` to launch the simulation.

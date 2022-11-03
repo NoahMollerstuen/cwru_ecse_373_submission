@@ -65,8 +65,6 @@ void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 		bin = unit_id;
 	}
 	ROS_INFO("This product can be found in bin [%s]", bin.c_str());
-
-	osrf_gear::Model curModel;
 	
 	// Search the logical camera images for the part
 	for(int i = 0; i < 10; i++) {
@@ -74,56 +72,55 @@ void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 			// This camera topic matches the name of the bin
 			for(osrf_gear::Model model : logical_camera_images[i]->models) {
 				if(model.type == part_type) {
-					curModel = model; // save this model to use this at transforming below
 					ROS_WARN("Model type: %s", model.type.c_str());
 					ROS_WARN("Bin number: %s", bin.c_str());
 					ROS_WARN("Part located at x=%f, y=%f, z=%f", model.pose.position.x, model.pose.position.y, model.pose.position.z);
+					
+					// Retrieve the transformation
+					geometry_msgs::TransformStamped tfStamped;
+					try {
+						tfStamped = tfBuffer.lookupTransform("arm1_base_link", "logical_camera_" + bin + "_frame", ros::Time(0.0), ros::Duration(1.0));
+						ROS_INFO("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
+					} catch (tf2::TransformException &ex) {
+						ROS_ERROR("%s", ex.what());
+					}
+					
+					// Create variables
+					geometry_msgs::PoseStamped part_pose, goal_pose;
+
+					// Copy pose from the logical camera.
+					part_pose.pose = model.pose;
+					tf2::doTransform(part_pose, goal_pose, tfStamped);
+					
+					goal_pose.pose.position.z += 0.10; // 10 cm above the part
+					// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
+					goal_pose.pose.orientation.w = 0.707;
+					goal_pose.pose.orientation.x = 0.0;
+					goal_pose.pose.orientation.y = 0.707;
+					goal_pose.pose.orientation.z = 0.0;
+					
+					ROS_INFO("part_pose position x: %f", part_pose.pose.position.x);
+					ROS_INFO("part_pose position y: %f", part_pose.pose.position.y);
+					ROS_INFO("part_pose position z: %f", part_pose.pose.position.z);
+					ROS_INFO("part_pose orientation w: %f", part_pose.pose.orientation.w);
+					ROS_INFO("part_pose orientation x: %f", part_pose.pose.orientation.x);
+					ROS_INFO("part_pose orientation y: %f", part_pose.pose.orientation.y);
+					ROS_INFO("part_pose orientation z: %f", part_pose.pose.orientation.z);
+					
+					ROS_INFO("goal_pose position x: %f", goal_pose.pose.position.x);
+					ROS_INFO("goal_pose position y: %f", goal_pose.pose.position.y);
+					ROS_INFO("goal_pose position z: %f", goal_pose.pose.position.z);
+					ROS_INFO("goal_pose orientation w: %f", goal_pose.pose.orientation.w);
+					ROS_INFO("goal_pose orientation x: %f", goal_pose.pose.orientation.x);
+					ROS_INFO("goal_pose orientation y: %f", goal_pose.pose.orientation.y);
+					ROS_INFO("goal_pose orientation z: %f", goal_pose.pose.orientation.z);
+					
 					break;
 				}
 			}
 			break;
 		}
 	}
-
-	// Retrieve the transformation
-	geometry_msgs::TransformStamped tfStamped;
-	try {
-		tfStamped = tfBuffer.lookupTransform("arm1_base_link", "logical_camera_bin4_frame", ros::Time(0.0), ros::Duration(1.0));
-		ROS_INFO("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
-	} catch (tf2::TransformException &ex) {
-		ROS_ERROR("%s", ex.what());
-	}
-	// tf2_ross::Buffer.lookupTransform("to_frame", "from_frame", "how_recent","how_long_to_wait_for_transform");
-	
-	// Create variables
-	geometry_msgs::PoseStamped part_pose, goal_pose;
-
-	// Copy pose from the logical camera.
-	part_pose.pose = curModel.pose;
-	tf2::doTransform(part_pose, goal_pose, tfStamped);
-	
-	goal_pose.pose.position.z += 0.10; // 10 cm above the part
-	// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
-	goal_pose.pose.orientation.w = 0.707;
-	goal_pose.pose.orientation.x = 0.0;
-	goal_pose.pose.orientation.y = 0.707;
-	goal_pose.pose.orientation.z = 0.0;
-	
-	ROS_INFO("part_pose position x: %f", part_pose.pose.position.x);
-	ROS_INFO("part_pose position y: %f", part_pose.pose.position.y);
-	ROS_INFO("part_pose position z: %f", part_pose.pose.position.z);
-	ROS_INFO("part_pose orientation w: %f", part_pose.pose.orientation.w);
-	ROS_INFO("part_pose orientation x: %f", part_pose.pose.orientation.x);
-	ROS_INFO("part_pose orientation y: %f", part_pose.pose.orientation.y);
-	ROS_INFO("part_pose orientation z: %f", part_pose.pose.orientation.z);
-	
-	ROS_INFO("goal_pose position x: %f", goal_pose.pose.position.x);
-	ROS_INFO("goal_pose position y: %f", goal_pose.pose.position.y);
-	ROS_INFO("goal_pose position z: %f", goal_pose.pose.position.z);
-	ROS_INFO("goal_pose orientation w: %f", goal_pose.pose.orientation.w);
-	ROS_INFO("goal_pose orientation x: %f", goal_pose.pose.orientation.x);
-	ROS_INFO("goal_pose orientation y: %f", goal_pose.pose.orientation.y);
-	ROS_INFO("goal_pose orientation z: %f", goal_pose.pose.orientation.z);
 }
 
 void logicalCameraCallback(int index, const osrf_gear::LogicalCameraImage::ConstPtr& msg) {

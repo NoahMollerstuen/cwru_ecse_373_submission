@@ -48,8 +48,13 @@ void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 		ROS_ERROR("Call to /ariac/material_locations failed!");
 		return;
 	}
-  
-	std::string bin = material_locations_srv.response.storage_units[0].unit_id;
+	std::string bin;
+	std::string unit_id = material_locations_srv.response.storage_units[0].unit_id;
+	if(unit_id == "belt") {
+		bin = material_locations_srv.response.storage_units.back().unit_id;
+	} else {
+		bin = unit_id;
+	}
 	ROS_INFO("This product can be found in bin [%s]", bin.c_str());
 	
 	// Search the logical camera images for the part
@@ -78,12 +83,13 @@ int main(int argc, char **argv) {
 	
 	// Wait for the competition to be ready
 	ROS_INFO("Waiting for competition...");
+
 	ros::ServiceClient begin_client = n.serviceClient<std_srvs::Trigger>("/ariac/start_competition");
 	begin_client.waitForExistence();
 	
-	// Create service client for finding materials
+	// Initialize service client for finding materials
 	material_locations_client = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
-	
+
 	// Subscribe to logical camera messages
 	std::vector<ros::Subscriber> camera_subs;
 	camera_subs.clear();
@@ -94,13 +100,14 @@ int main(int argc, char **argv) {
 	
 	// Wait until a message has been recieved from every logical camera
 	ROS_INFO("Waiting for logical camera messages...");
+	
 	int sum;
 	do {
 		ros::spinOnce();
 		sum = 0;
 		for(int i = 0; i < 10; i++) {
 			sum += image_recieved[i];
-			//ROS_INFO("%d", image_recieved[i]);
+			// ROS_INFO("%d", image_recieved[i]);
 		}
 	} while (sum < 10);
 	
@@ -128,4 +135,3 @@ int main(int argc, char **argv) {
 
 	return 0;
 }
-

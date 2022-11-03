@@ -77,7 +77,7 @@ void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 					curModel = model; // save this model to use this at transforming below
 					ROS_WARN("Model type: %s", model.type.c_str());
 					ROS_WARN("Bin number: %s", bin.c_str());
-					ROS_WARN("Container located at x=%f, y=%f, z=%f", model.pose.position.x, model.pose.position.y, model.pose.position.z);
+					ROS_WARN("Part located at x=%f, y=%f, z=%f", model.pose.position.x, model.pose.position.y, model.pose.position.z);
 					break;
 				}
 			}

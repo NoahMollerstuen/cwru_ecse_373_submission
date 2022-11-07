@@ -6,6 +6,7 @@
 #include "osrf_gear/GetMaterialLocations.h"
 #include "osrf_gear/LogicalCameraImage.h"
 #include "osrf_gear/Model.h"
+#include "sensor_msgs/JointState.h"
 
 // Transformation header files
 #include "tf2_ros/buffer.h"
@@ -19,6 +20,9 @@ std::vector<osrf_gear::Order::ConstPtr> orders;
 // Sevice client to query the location of specific materials
 ros::ServiceClient material_locations_client;
 osrf_gear::GetMaterialLocations material_locations_srv;
+
+// Object to keep track of the latest joint states
+sensor_msgs::JointState joint_states;
 
 // Array of logical camera topics
 std::string camera_topics[] = {
@@ -128,6 +132,10 @@ void logicalCameraCallback(int index, const osrf_gear::LogicalCameraImage::Const
 	image_recieved[index] = true;
 }
 
+void jointStatesCallback(const sensor_msgs::JointState::ConstPtr& msg) {
+	joint_states = *msg;
+}
+
 int main(int argc, char **argv) {
 	ros::init(argc, argv, "ariac_interface");
 	ros::NodeHandle n;
@@ -158,6 +166,8 @@ int main(int argc, char **argv) {
 		image_recieved[i] = false;
 	}
 	
+	n.subscribe<sensor_msgs::JointState>("/araiac/arm1/joint_states", 1000, jointStatesCallback);
+
 	// Wait until a message has been recieved from every logical camera
 	ROS_INFO("Waiting for logical camera messages...");
 	
@@ -191,7 +201,19 @@ int main(int argc, char **argv) {
 		ROS_INFO("Competition service called successfully: %s", begin_comp.response.message.c_str());
 	}
 	
-	ros::spin();
+	// Create a asynchronous spinner
+	ros::AsyncSpinner spinner(4); // Use 4 threads
+	spinner.start();
+	//ros::waitForShutdown();
+
+	ros::Rate loop_rate(0.2);
+	while(ros::ok()) {
+		loop_rate.sleep();
+		for(int i = 0; i < 8; i++) {
+			ROS_INFO("Name: %s", joint_states.name[i].c_str());
+			//ROS_INFO("Name: %s, Position: %f, Velocity: %f, Effort: %f", joint_states.name[i].c_str(), joint_states.position[i], joint_states.velocity[i], joint_states.effort[i]);
+		}
+	}
 
 	return 0;
 }

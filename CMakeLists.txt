@@ -207,5 +207,3 @@ target_link_libraries(ariac_interface
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
 
-target_link_libraries(ariac_interface ${catkin_LIBRARIES})
-

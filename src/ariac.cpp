@@ -7,6 +7,7 @@
 #include "osrf_gear/LogicalCameraImage.h"
 #include "osrf_gear/Model.h"
 #include "sensor_msgs/JointState.h"
+#include "ur_kinematics/ur_kin.h"
 
 // Transformation header files
 #include "tf2_ros/buffer.h"
@@ -204,7 +205,6 @@ int main(int argc, char **argv) {
 	// Create a asynchronous spinner
 	ros::AsyncSpinner spinner(4); // Use 4 threads
 	spinner.start();
-	//ros::waitForShutdown();
 
 	ros::Rate loop_rate(0.1);
 	while(ros::ok()) {

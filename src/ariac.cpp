@@ -206,13 +206,12 @@ int main(int argc, char **argv) {
 	spinner.start();
 	//ros::waitForShutdown();
 
-	ros::Rate loop_rate(0.2);
+	ros::Rate loop_rate(0.1);
 	while(ros::ok()) {
-		loop_rate.sleep();
 		for(int i = 0; i < 8; i++) {
-			ROS_INFO("Name: %s", joint_states.name[i].c_str());
-			//ROS_INFO("Name: %s, Position: %f, Velocity: %f, Effort: %f", joint_states.name[i].c_str(), joint_states.position[i], joint_states.velocity[i], joint_states.effort[i]);
+			ROS_INFO("Name: %s, Position: %f, Velocity: %f, Effort: %f", joint_states.name[i].c_str(), joint_states.position[i], joint_states.velocity[i], joint_states.effort[i]);
 		}
+		loop_rate.sleep();
 	}
 
 	return 0;

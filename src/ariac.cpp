@@ -166,7 +166,7 @@ int main(int argc, char **argv) {
 		image_recieved[i] = false;
 	}
 	
-	n.subscribe<sensor_msgs::JointState>("/araiac/arm1/joint_states", 1000, jointStatesCallback);
+	ros::Subscriber joint_states_sub = n.subscribe("/ariac/arm1/joint_states", 1000, jointStatesCallback);
 
 	// Wait until a message has been recieved from every logical camera
 	ROS_INFO("Waiting for logical camera messages...");

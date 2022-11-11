@@ -118,13 +118,11 @@ void setArmPosition(float x, float y, float z) {
 		double shoulder_angle = q_sols[i][1];
 		// Get the angle between the ideal shoulder angle and this solution's shoulder angle
 		double dist = std::min(fabs(shoulder_angle - target_angle), 2.0 * M_PI - fabs(shoulder_angle - target_angle));
-		ROS_INFO("%f, %f", shoulder_angle, dist);
 		if (dist < best_angle) {
 			best_angle = dist;
 			best_solution_index = i;
 		}
 	}
-	ROS_INFO("Best angle: %f", q_sols[best_solution_index][1]);
 	
 	// Set the end point for the movement
 	joint_trajectory.points[1].positions.resize(joint_trajectory.joint_names.size());
@@ -138,7 +136,7 @@ void setArmPosition(float x, float y, float z) {
 	// How long to take for the movement.
 	joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
 
-	ROS_INFO("Moving arm...");
+	ROS_INFO("Moving arm to %f %f %f", x, y, z);
 	joint_trajectories_pub.publish(joint_trajectory);
 }
 
@@ -198,25 +196,12 @@ void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 					goal_pose.pose.orientation.x = 0.0;
 					goal_pose.pose.orientation.y = 0.707;
 					goal_pose.pose.orientation.z = 0.0;
-					
-					// ROS_INFO("part_pose position x: %f", part_pose.pose.position.x);
-					// ROS_INFO("part_pose position y: %f", part_pose.pose.position.y);
-					// ROS_INFO("part_pose position z: %f", part_pose.pose.position.z);
-					// ROS_INFO("part_pose orientation w: %f", part_pose.pose.orientation.w);
-					// ROS_INFO("part_pose orientation x: %f", part_pose.pose.orientation.x);
-					// ROS_INFO("part_pose orientation y: %f", part_pose.pose.orientation.y);
-					// ROS_INFO("part_pose orientation z: %f", part_pose.pose.orientation.z);
-					
+										
 					ROS_INFO("goal_pose position x: %f", goal_pose.pose.position.x);
 					ROS_INFO("goal_pose position y: %f", goal_pose.pose.position.y);
 					ROS_INFO("goal_pose position z: %f", goal_pose.pose.position.z);
-					// ROS_INFO("goal_pose orientation w: %f", goal_pose.pose.orientation.w);
-					// ROS_INFO("goal_pose orientation x: %f", goal_pose.pose.orientation.x);
-					// ROS_INFO("goal_pose orientation y: %f", goal_pose.pose.orientation.y);
-					// ROS_INFO("goal_pose orientation z: %f", goal_pose.pose.orientation.z);
 
-					// setArmPosition(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.x);
-					setArmPosition(-0.8, 0.235, -0.17);
+					setArmPosition(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z);
 
 					break;
 				}

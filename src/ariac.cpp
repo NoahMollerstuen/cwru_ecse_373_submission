@@ -17,6 +17,11 @@
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 #include "geometry_msgs/TransformStamped.h"
 
+// Action server
+#include "actionlib/client/simple_action_client.h"
+#include "actionlib/client/terminal_state.h"
+#include "control_msgs/FollowJointTrajectoryAction.h"
+
 // Vector to keep track of received orders
 std::vector<osrf_gear::Order::ConstPtr> orders;
 
@@ -51,7 +56,7 @@ tf2_ros::Buffer tfBuffer;
 double T_pose[4][4], T_des[4][4];
 double q_pose[6], q_sols[8][6];
 int msg_count = 0;
-ros::Publisher joint_trajectories_pub;
+actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> *trajectories_as;
 
 void setArmPosition(float x, float y, float z) {
 	// Where is the end effector given the joint angles.
@@ -137,7 +142,24 @@ void setArmPosition(float x, float y, float z) {
 	joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
 
 	ROS_INFO("Moving arm to %f %f %f", x, y, z);
-	joint_trajectories_pub.publish(joint_trajectory);
+
+	// Create the structure to populate for running the Action Server.
+	control_msgs::FollowJointTrajectoryAction joint_trajectory_as;
+	
+	// It is possible to reuse the JointTrajectory from above
+	joint_trajectory_as.action_goal.goal.trajectory = joint_trajectory;
+	
+	// The header and goal (not the tolerances) of the action must be filled out as well.
+	// (rosmsg show control_msgs/FollowJointTrajectoryAction)
+	joint_trajectory_as.action_goal.header.seq = msg_count;
+	joint_trajectory_as.action_goal.header.stamp = ros::Time::now();
+	joint_trajectory_as.action_goal.header.frame_id = "/world";
+
+	joint_trajectory_as.action_goal.goal_id.stamp = ros::Time::now();
+	joint_trajectory_as.action_goal.goal_id.id = std::to_string(msg_count);
+
+	actionlib::SimpleClientGoalState state = trajectories_as->sendGoalAndWait(joint_trajectory_as.action_goal.goal, ros::Duration(30.0), ros::Duration(30.0));
+	ROS_INFO("Action Server returned with status: [%i] %s", state.state_, state.toString().c_str());
 }
 
 void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
@@ -178,7 +200,6 @@ void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 					geometry_msgs::TransformStamped tfStamped;
 					try {
 						tfStamped = tfBuffer.lookupTransform("arm1_base_link", "logical_camera_" + bin + "_frame", ros::Time(0.0), ros::Duration(1.0));
-						ROS_INFO("Transform to [%s] from [%s]", tfStamped.header.frame_id.c_str(), tfStamped.child_frame_id.c_str());
 					} catch (tf2::TransformException &ex) {
 						ROS_ERROR("%s", ex.what());
 					}
@@ -196,14 +217,9 @@ void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 					goal_pose.pose.orientation.x = 0.0;
 					goal_pose.pose.orientation.y = 0.707;
 					goal_pose.pose.orientation.z = 0.0;
-										
-					ROS_INFO("goal_pose position x: %f", goal_pose.pose.position.x);
-					ROS_INFO("goal_pose position y: %f", goal_pose.pose.position.y);
-					ROS_INFO("goal_pose position z: %f", goal_pose.pose.position.z);
-
+					
 					setArmPosition(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z);
-
-					break;
+					ros::Duration(1.0).sleep();
 				}
 			}
 			break;
@@ -251,7 +267,10 @@ int main(int argc, char **argv) {
 	}
 	
 	ros::Subscriber joint_states_sub = n.subscribe("/ariac/arm1/joint_states", 1000, jointStatesCallback);
-	joint_trajectories_pub = n.advertise<trajectory_msgs::JointTrajectory>("ariac/arm1/arm/command", 1000);
+
+	// Initialize the action serverS
+	actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>as("ariac/arm1/arm/follow_joint_trajectory", true);
+	trajectories_as = &as;
 
 	// Wait until a message has been recieved from every logical camera
 	ROS_INFO("Waiting for logical camera messages...");
@@ -291,10 +310,6 @@ int main(int argc, char **argv) {
 
 	ros::Rate loop_rate(0.1);
 	while(ros::ok()) {
-		ROS_INFO("Joint states update:");
-		for(int i = 0; i < 8; i++) {
-			ROS_INFO("Name: %s, Position: %f, Velocity: %f, Effort: %f", joint_states.name[i].c_str(), joint_states.position[i], joint_states.velocity[i], joint_states.effort[i]);
-		}
 		loop_rate.sleep();
 	}
 

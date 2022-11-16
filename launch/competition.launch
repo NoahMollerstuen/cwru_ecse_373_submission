@@ -1,0 +1,4 @@
+<launch>
+    <include file="$(find ecse_373_ariac)/launch/ecse_373_ariac.launch" pass_all_args="true"/>
+    <node name="ariac_interface" pkg="cwru_ecse_373_submission" type="ariac_interface"/>
+</launch>

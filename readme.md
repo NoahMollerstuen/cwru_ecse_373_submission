@@ -1,4 +1,4 @@
-# Lab 5  
+# Final Project
 Team 6  
 Seongmin Jung, Noah Mollerstuen, Rafay Chaudhry  
 Professor Lee  
@@ -6,6 +6,7 @@ ECSE 373
 Last modified: 16 November 2022  
 
 ---
+![Robot arm in the araic simulation](ariac_arm.png)
 
 ## Ariac Environemnt Setup
 This lab uses the 2019 ARIAC simulation environemnt developed by the Open Source Robotics Foundation. To find out more about the ARIAC environement, read the documentation [here](https://bitbucket.org/osrf/ariac/wiki/2019/Home).

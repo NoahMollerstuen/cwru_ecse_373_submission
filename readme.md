@@ -3,7 +3,7 @@ Team 6
 Seongmin Jung, Noah Mollerstuen, Rafay Chaudhry  
 Professor Lee  
 ECSE 373  
-Last modified: 11 November 2022  
+Last modified: 16 November 2022  
 
 ---
 
@@ -28,7 +28,7 @@ If you still have an error, try the command below:
     update-alternatives --install /usr/bin/python python /usr/bin/python2.7 1
     update-alternatives --install /usr/bin/python python /usr/bin/python3 2
 
-`ecse373_f22_team6_lab5` package is designed to interface with the ARIAC environment to control the simulation and locate parts which have been ordered. After installing and building the package, run `rosrun ecse373_f22_team6_lab5 ariac_interface` to start the node. You may need to unpause the Gazebo simulation. The node will print the location of the ordered part to the console. Plus, it will print the original and transformed version of `Pose`.
+The `cwru_ecse_373_submission` package is designed to interface with the ARIAC environment to control the simulation and locate parts which have been ordered. After installing and building the package, run `rosrun cwru_ecse_373_submission ariac_interface` to start the node. You may need to unpause the Gazebo simulation. The node will print the location of the ordered part to the console. Plus, it will print the original and transformed version of `Pose`.
 
 ### Inverse Kinematics Implementation
-This package uses an inverse kinematics library to control a robotics arm. Becuase the arm has 6 degrees of freedom. there are often multiple solutions that all reach the desired position and orientation of the end effector. In these cases, the solution with the shoulder lift angle closest to directly up (+z) is chosen. This ensures the elbow joint will stay up and away from any obstacles.
+This package uses an inverse kinematics library to control a robotics arm. Becuase the arm has 6 degrees of freedom. there are often multiple solutions that all reach the desired position and orientation of the end effector. To resolve this, the shoulder angle and wrist 1 joint angle are constrained to a 180 degree region. When there are still multiple possible solutions, the solution with the shoulder lift angle closest to directly up (+z) is chosen. This ensures the elbow joint will stay up and away from any obstacles.

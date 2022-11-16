@@ -58,7 +58,7 @@ double q_pose[6], q_sols[8][6];
 int msg_count = 0;
 actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> *trajectories_as;
 
-void setArmPosition(float x, float y, float z) {
+void moveArmToPosition(float x, float y, float z) {
 	// Where is the end effector given the joint angles.
 	// joint_states.position[0] is the linear_arm_actuator_joint
 	q_pose[0] = joint_states.position[1];
@@ -117,16 +117,29 @@ void setArmPosition(float x, float y, float z) {
 
 	// Choose the solution that keeps the elbow joint as high as possible
 	double target_angle = 3.0 / 2.0 * M_PI; // The elbow is straight up when the shoulder joint is 3/2*pi
-	int best_solution_index = 0;
+	int best_solution_index = -1;
 	double best_angle = 10000; // Smaller is better, so this initial score will be beaten by any solution
 	for (int i = 0; i < num_sols; i++) {
+		double pan_angle = q_sols[i][0];
 		double shoulder_angle = q_sols[i][1];
+		double wrist_1_angle = q_sols[i][3];
+
+		// Ignore solutions where the base or wrist are pointed backwards
+		if (abs(M_PI - pan_angle) >= M_PI / 2 || abs(M_PI - wrist_1_angle) >= M_PI / 2) {
+			continue;
+		}
+
 		// Get the angle between the ideal shoulder angle and this solution's shoulder angle
 		double dist = std::min(fabs(shoulder_angle - target_angle), 2.0 * M_PI - fabs(shoulder_angle - target_angle));
 		if (dist < best_angle) {
 			best_angle = dist;
 			best_solution_index = i;
 		}
+	}
+
+	if (best_solution_index == -1) {
+		ROS_ERROR("Could not find an IK solution for an end effector poition of %f, %f, %f", x, y, z);
+		return;
 	}
 	
 	// Set the end point for the movement
@@ -218,8 +231,10 @@ void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 					goal_pose.pose.orientation.y = 0.707;
 					goal_pose.pose.orientation.z = 0.0;
 					
-					setArmPosition(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z);
-					ros::Duration(1.0).sleep();
+					moveArmToPosition(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z);
+					ros::Duration(2.0).sleep();
+					moveArmToPosition(-0.4, 0, 0.2);
+					ros::Duration(2.0).sleep();
 				}
 			}
 			break;
@@ -268,7 +283,7 @@ int main(int argc, char **argv) {
 	
 	ros::Subscriber joint_states_sub = n.subscribe("/ariac/arm1/joint_states", 1000, jointStatesCallback);
 
-	// Initialize the action serverS
+	// Initialize the action server
 	actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>as("ariac/arm1/arm/follow_joint_trajectory", true);
 	trajectories_as = &as;
 

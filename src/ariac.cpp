@@ -5,6 +5,7 @@
 #include "std_srvs/Trigger.h"
 #include "osrf_gear/Order.h"
 #include "osrf_gear/GetMaterialLocations.h"
+#include "osrf_gear/VacuumGripperControl.h"
 #include "osrf_gear/LogicalCameraImage.h"
 #include "osrf_gear/Model.h"
 #include "sensor_msgs/JointState.h"
@@ -28,6 +29,11 @@ std::vector<osrf_gear::Order::ConstPtr> orders;
 // Sevice client to query the location of specific materials
 ros::ServiceClient material_locations_client;
 osrf_gear::GetMaterialLocations material_locations_srv;
+
+// Serivce client to command the gripper
+ros::ServiceClient gripper_client;
+osrf_gear::VacuumGripperControl gripper_control_srv;
+
 
 // Object to keep track of the latest joint states
 sensor_msgs::JointState joint_states;
@@ -58,7 +64,7 @@ double q_pose[6], q_sols[8][6];
 int msg_count = 0;
 actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> *trajectories_as;
 
-void moveArmToPosition(float x, float y, float z) {
+void moveArmToPosition(float x, float y, float z, ros::Duration duration = ros::Duration(1.0)) {
 	// Where is the end effector given the joint angles.
 	// joint_states.position[0] is the linear_arm_actuator_joint
 	q_pose[0] = joint_states.position[1];
@@ -152,7 +158,7 @@ void moveArmToPosition(float x, float y, float z) {
 	}
 
 	// How long to take for the movement.
-	joint_trajectory.points[1].time_from_start = ros::Duration(1.0);
+	joint_trajectory.points[1].time_from_start = duration;
 
 	ROS_INFO("Moving arm to %f %f %f", x, y, z);
 
@@ -173,6 +179,21 @@ void moveArmToPosition(float x, float y, float z) {
 
 	actionlib::SimpleClientGoalState state = trajectories_as->sendGoalAndWait(joint_trajectory_as.action_goal.goal, ros::Duration(30.0), ros::Duration(30.0));
 	ROS_INFO("Action Server returned with status: [%i] %s", state.state_, state.toString().c_str());
+}
+
+void grabOrReleasePart(float x, float y, float z, bool grab) {
+	bool succeeded = false;
+	moveArmToPosition(x, y, z + 0.15);
+
+	while(!(succeeded && gripper_control_srv.response.success) && ros::ok()) {	
+		ros::Duration(0.5).sleep();
+		moveArmToPosition(x, y, z + 0.005);
+		ros::Duration(0.25).sleep();
+		gripper_control_srv.request.enable = grab;
+		succeeded = gripper_client.call(gripper_control_srv);
+		ros::Duration(0.25).sleep();
+		moveArmToPosition(x, y, z + 0.15);
+	}
 }
 
 void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
@@ -224,17 +245,18 @@ void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 					part_pose.pose = model.pose;
 					tf2::doTransform(part_pose, goal_pose, tfStamped);
 					
-					goal_pose.pose.position.z += 0.10; // 10 cm above the part
 					// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
 					goal_pose.pose.orientation.w = 0.707;
 					goal_pose.pose.orientation.x = 0.0;
 					goal_pose.pose.orientation.y = 0.707;
 					goal_pose.pose.orientation.z = 0.0;
 					
-					moveArmToPosition(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z);
-					ros::Duration(2.0).sleep();
+					grabOrReleasePart(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z, true);
+					ros::Duration(0.5).sleep();
 					moveArmToPosition(-0.4, 0, 0.2);
-					ros::Duration(2.0).sleep();
+					ros::Duration(1.0).sleep();
+					grabOrReleasePart(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z, false);
+					ros::Duration(1.0);
 				}
 			}
 			break;
@@ -266,6 +288,9 @@ int main(int argc, char **argv) {
 	
 	// Initialize service client for finding materials
 	material_locations_client = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
+
+	// Initialize service client for activating the gripper
+	gripper_client = n.serviceClient<osrf_gear::VacuumGripperControl>("/ariac/arm1/gripper/control");
 
 	// Subscribe to logical camera messages
 	std::vector<ros::Subscriber> camera_subs;

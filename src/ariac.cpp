@@ -6,6 +6,7 @@
 #include "osrf_gear/Order.h"
 #include "osrf_gear/GetMaterialLocations.h"
 #include "osrf_gear/VacuumGripperControl.h"
+#include "osrf_gear/VacuumGripperState.h"
 #include "osrf_gear/LogicalCameraImage.h"
 #include "osrf_gear/Model.h"
 #include "sensor_msgs/JointState.h"
@@ -34,9 +35,11 @@ osrf_gear::GetMaterialLocations material_locations_srv;
 ros::ServiceClient gripper_client;
 osrf_gear::VacuumGripperControl gripper_control_srv;
 
-
 // Object to keep track of the latest joint states
 sensor_msgs::JointState joint_states;
+
+// Object to keep track of the gripper state
+osrf_gear::VacuumGripperState gripper_state;
 
 // Array of logical camera topics
 std::string camera_topics[] = {
@@ -185,13 +188,13 @@ void grabOrReleasePart(float x, float y, float z, bool grab) {
 	bool succeeded = false;
 	moveArmToPosition(x, y, z + 0.15);
 
-	while(!(succeeded && gripper_control_srv.response.success) && ros::ok()) {	
+	while(!(gripper_state.attached == grab) && ros::ok()) {	
 		ros::Duration(0.5).sleep();
-		moveArmToPosition(x, y, z + 0.005);
-		ros::Duration(0.25).sleep();
+		moveArmToPosition(x, y, z + 0.0075);
+		ros::Duration(0.5).sleep();
 		gripper_control_srv.request.enable = grab;
 		succeeded = gripper_client.call(gripper_control_srv);
-		ros::Duration(0.25).sleep();
+		ros::Duration(0.5).sleep();
 		moveArmToPosition(x, y, z + 0.15);
 	}
 }
@@ -256,7 +259,7 @@ void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 					moveArmToPosition(-0.4, 0, 0.2);
 					ros::Duration(1.0).sleep();
 					grabOrReleasePart(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z, false);
-					ros::Duration(1.0);
+					ros::Duration(1.0).sleep();
 				}
 			}
 			break;
@@ -271,6 +274,10 @@ void logicalCameraCallback(int index, const osrf_gear::LogicalCameraImage::Const
 
 void jointStatesCallback(const sensor_msgs::JointState::ConstPtr& msg) {
 	joint_states = *msg;
+}
+
+void gripperStateCallback(const osrf_gear::VacuumGripperStateConstPtr& msg) {
+	gripper_state = *msg;
 }
 
 int main(int argc, char **argv) {
@@ -307,6 +314,8 @@ int main(int argc, char **argv) {
 	}
 	
 	ros::Subscriber joint_states_sub = n.subscribe("/ariac/arm1/joint_states", 1000, jointStatesCallback);
+
+	ros::Subscriber gripper_state_sub = n.subscribe("/ariac/arm1/gripper/state", 1000, gripperStateCallback);
 
 	// Initialize the action server
 	actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>as("ariac/arm1/arm/follow_joint_trajectory", true);

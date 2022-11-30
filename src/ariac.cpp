@@ -67,6 +67,55 @@ double q_pose[6], q_sols[8][6];
 int msg_count = 0;
 actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction> *trajectories_as;
 
+trajectory_msgs::JointTrajectory setupJointTrajectory(trajectory_msgs::JointTrajectory joint_trajectory) {
+	// Fill out the joint trajectory header.
+	// Each joint trajectory should have an non-monotonically increasing sequence number.
+	joint_trajectory.header.seq = msg_count++;
+	joint_trajectory.header.stamp = ros::Time::now(); // When was this message created.
+	joint_trajectory.header.frame_id = "/world"; // Frame in which this is specified.
+	// Set the names of the joints being used.  All must be present.
+	joint_trajectory.joint_names.clear();
+	joint_trajectory.joint_names.push_back("linear_arm_actuator_joint");
+	joint_trajectory.joint_names.push_back("shoulder_pan_joint");
+	joint_trajectory.joint_names.push_back("shoulder_lift_joint");
+	joint_trajectory.joint_names.push_back("elbow_joint");
+	joint_trajectory.joint_names.push_back("wrist_1_joint");
+	joint_trajectory.joint_names.push_back("wrist_2_joint");
+	joint_trajectory.joint_names.push_back("wrist_3_joint");
+
+	// Set a start and end point.
+	joint_trajectory.points.resize(2);
+
+	// When to start (immediately upon receipt).
+	joint_trajectory.points[0].time_from_start = ros::Duration(0.01);
+
+	// Setup the start and end points lists
+	joint_trajectory.points[0].positions.resize(joint_trajectory.joint_names.size());
+	joint_trajectory.points[1].positions.resize(joint_trajectory.joint_names.size());
+
+	return joint_trajectory;
+}
+
+void callJointTrajectoriesServer(trajectory_msgs::JointTrajectory joint_trajectory) {
+	// Create the structure to populate for running the Action Server.
+	control_msgs::FollowJointTrajectoryAction joint_trajectory_as;
+	
+	// It is possible to reuse the JointTrajectory from above
+	joint_trajectory_as.action_goal.goal.trajectory = joint_trajectory;
+	
+	// The header and goal (not the tolerances) of the action must be filled out as well.
+	// (rosmsg show control_msgs/FollowJointTrajectoryAction)
+	joint_trajectory_as.action_goal.header.seq = msg_count;
+	joint_trajectory_as.action_goal.header.stamp = ros::Time::now();
+	joint_trajectory_as.action_goal.header.frame_id = "/world";
+
+	joint_trajectory_as.action_goal.goal_id.stamp = ros::Time::now();
+	joint_trajectory_as.action_goal.goal_id.id = std::to_string(msg_count);
+
+	actionlib::SimpleClientGoalState state = trajectories_as->sendGoalAndWait(joint_trajectory_as.action_goal.goal, ros::Duration(30.0), ros::Duration(30.0));
+	ROS_INFO("Action Server returned with status: [%i] %s", state.state_, state.toString().c_str());
+}
+
 void moveArmToPosition(float x, float y, float z, ros::Duration duration = ros::Duration(1.0)) {
 	// Where is the end effector given the joint angles.
 	// joint_states.position[0] is the linear_arm_actuator_joint
@@ -93,25 +142,11 @@ void moveArmToPosition(float x, float y, float z, ros::Duration duration = ros::
 
 	trajectory_msgs::JointTrajectory joint_trajectory;
 
-	// Fill out the joint trajectory header.
-	// Each joint trajectory should have an non-monotonically increasing sequence number.
-	joint_trajectory.header.seq = msg_count++;
-	joint_trajectory.header.stamp = ros::Time::now(); // When was this message created.
-	joint_trajectory.header.frame_id = "/world"; // Frame in which this is specified.
-	// Set the names of the joints being used.  All must be present.
-	joint_trajectory.joint_names.clear();
-	joint_trajectory.joint_names.push_back("linear_arm_actuator_joint");
-	joint_trajectory.joint_names.push_back("shoulder_pan_joint");
-	joint_trajectory.joint_names.push_back("shoulder_lift_joint");
-	joint_trajectory.joint_names.push_back("elbow_joint");
-	joint_trajectory.joint_names.push_back("wrist_1_joint");
-	joint_trajectory.joint_names.push_back("wrist_2_joint");
-	joint_trajectory.joint_names.push_back("wrist_3_joint");
-
-	// Set a start and end point.
-	joint_trajectory.points.resize(2);
+	joint_trajectory = setupJointTrajectory(joint_trajectory);
+	
 	// Set the start point to the current position of the joints from joint_states.
 	joint_trajectory.points[0].positions.resize(joint_trajectory.joint_names.size());
+
 	for (int indy = 0; indy < joint_trajectory.joint_names.size(); indy++) {
 		for (int indz = 0; indz < joint_states.name.size(); indz++) {
 			if (joint_trajectory.joint_names[indy] == joint_states.name[indz]) {
@@ -120,9 +155,6 @@ void moveArmToPosition(float x, float y, float z, ros::Duration duration = ros::
 			}
 		}
 	}
-
-	// When to start (immediately upon receipt).
-	joint_trajectory.points[0].time_from_start = ros::Duration(0.01);
 
 	// Choose the solution that keeps the elbow joint as high as possible
 	double target_angle = 3.0 / 2.0 * M_PI; // The elbow is straight up when the shoulder joint is 3/2*pi
@@ -165,23 +197,39 @@ void moveArmToPosition(float x, float y, float z, ros::Duration duration = ros::
 
 	ROS_INFO("Moving arm to %f %f %f", x, y, z);
 
-	// Create the structure to populate for running the Action Server.
-	control_msgs::FollowJointTrajectoryAction joint_trajectory_as;
-	
-	// It is possible to reuse the JointTrajectory from above
-	joint_trajectory_as.action_goal.goal.trajectory = joint_trajectory;
-	
-	// The header and goal (not the tolerances) of the action must be filled out as well.
-	// (rosmsg show control_msgs/FollowJointTrajectoryAction)
-	joint_trajectory_as.action_goal.header.seq = msg_count;
-	joint_trajectory_as.action_goal.header.stamp = ros::Time::now();
-	joint_trajectory_as.action_goal.header.frame_id = "/world";
+	callJointTrajectoriesServer(joint_trajectory);
+}
 
-	joint_trajectory_as.action_goal.goal_id.stamp = ros::Time::now();
-	joint_trajectory_as.action_goal.goal_id.id = std::to_string(msg_count);
+void moveBaseToPosition(float goal_pos, ros::Duration duration = ros::Duration(2.0)) {
+	trajectory_msgs::JointTrajectory joint_trajectory;
 
-	actionlib::SimpleClientGoalState state = trajectories_as->sendGoalAndWait(joint_trajectory_as.action_goal.goal, ros::Duration(30.0), ros::Duration(30.0));
-	ROS_INFO("Action Server returned with status: [%i] %s", state.state_, state.toString().c_str());
+	joint_trajectory = setupJointTrajectory(joint_trajectory);
+
+	// Set all joints to their current position
+	for (int indy = 0; indy < joint_trajectory.joint_names.size(); indy++) {
+		for (int indz = 0; indz < joint_states.name.size(); indz++) {
+			if (joint_trajectory.joint_names[indy] == joint_states.name[indz]) {
+				joint_trajectory.points[0].positions[indy] = joint_states.position[indz];
+				joint_trajectory.points[1].positions[indy] = joint_states.position[indz];
+				break;
+			}
+		}
+	}
+
+
+	// Set the linear_arm_actuator_joint to the goal position.
+	joint_trajectory.points[1].positions[0] = goal_pos;
+
+	// How long to take for the movement.
+	joint_trajectory.points[1].time_from_start = duration;
+
+	ROS_INFO("Moving base to %f", goal_pos);
+
+	callJointTrajectoriesServer(joint_trajectory);
+}
+
+void moveArmHome() {
+	moveArmToPosition(-0.4, 0, 0.2);
 }
 
 void grabOrReleasePart(float x, float y, float z, bool grab) {
@@ -256,8 +304,12 @@ void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 					
 					grabOrReleasePart(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z, true);
 					ros::Duration(0.5).sleep();
-					moveArmToPosition(-0.4, 0, 0.2);
+					moveArmHome();
 					ros::Duration(1.0).sleep();
+					moveBaseToPosition(2.1);
+					ros::Duration(3.0).sleep();
+					moveBaseToPosition(0);
+					ros::Duration(3.0).sleep();
 					grabOrReleasePart(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z, false);
 					ros::Duration(1.0).sleep();
 				}

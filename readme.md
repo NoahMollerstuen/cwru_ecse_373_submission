@@ -32,4 +32,18 @@ If you still have an error, try the command below:
 The `cwru_ecse_373_submission` package is designed to interface with the ARIAC environment to control the simulation and locate parts which have been ordered. After installing and building the package, run `rosrun cwru_ecse_373_submission ariac_interface` to start the node. You may need to unpause the Gazebo simulation. The arm will respond to orders by loading the AGVs with the desired products. Note: this package has a launch file, but due to a known issue with the araic launch script, starting the simulation using the launch file in this package will prevent the arm from functioning.    
 
 ### Inverse Kinematics Implementation
-This package uses an inverse kinematics library to control a robotics arm. Becuase the arm has 6 degrees of freedom. there are often multiple solutions that all reach the desired position and orientation of the end effector. To resolve this, the shoulder angle and wrist 1 joint angle are constrained to a 180 degree region. When there are still multiple possible solutions, the solution with the shoulder lift angle closest to directly up (+z) is chosen. This ensures the elbow joint will stay up and away from any obstacles.
+This package uses an inverse kinematics library to control a robotics arm. Becuase the arm has 6 degrees of freedom. there are often multiple solutions that all reach the desired position and orientation of the end effector. To resolve this, the shoulder lift angle is constrained to a 90 degree arc between directly forward and directly up, and the wrist 1 joint is constrained to a 180 degree arc. These constraints ensure there is only one solution for each target pose.
+
+
+## Tags
+### `labratory_5`
+Subscribe to orders on the `/ariac/orders` topic and calculate the transform from the arm frame to the part frame.
+### `labratory_6`
+Use the calculated transform to move the end effector to each part of the correct type according to the order.
+### `phase_1`
+Use the vacuum gripper service to pickup each of the parts of the correct type. Subscribe to the gripper feedback topic and retry the grab if it fails.
+### `phase_4`
+Loop over each shipment in each order and deliver each part in the shipment to the correct AGV. Use the submit shipment topic to complete shipments and score points in the ariac competition.
+
+## Theory of Operations
+![Block diagram showing the theory of operations](Final Project Block Diagram.jpg)

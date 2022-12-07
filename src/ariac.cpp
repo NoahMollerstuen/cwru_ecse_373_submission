@@ -237,7 +237,7 @@ void grabOrReleasePart(float x, float y, float z, bool grab) {
 	while(!(gripper_state.attached == grab) && ros::ok()) {	
 		ros::Duration(0.5).sleep();
 		moveArmToPosition(x, y, z + 0.015);
-		ros::Duration(0.5).sleep();
+		ros::Duration(1.0).sleep();
 		gripper_control_srv.request.enable = grab;
 		succeeded = gripper_client.call(gripper_control_srv);
 		ros::Duration(0.5).sleep();
@@ -391,7 +391,7 @@ int main(int argc, char **argv) {
 									
 									double base_pos;
 									if (bin == "bin4") {
-										base_pos = 0.0;
+										base_pos = -0.2;
 									} else if (bin == "bin5") {
 										base_pos = 0.5;
 									} else if (bin == "bin6") {
@@ -478,16 +478,6 @@ int main(int argc, char **argv) {
 					ROS_ERROR("Failed to call service to notify agv");
 				}
 			}
-
-			// if (orders.size() == 0) {
-			// 	ros::ServiceClient end_client = n.serviceClient<std_srvs::Trigger>("/ariac/end_competition");
-			// 	// End the competition
-			// 	std_srvs::Trigger end_comp;
-			// 	int service_call_succeeded;
-			// 	service_call_succeeded = end_client.call(end_comp);
-				
-			// 	return 0;
-			// }
 		}
 		loop_rate.sleep();
 	}

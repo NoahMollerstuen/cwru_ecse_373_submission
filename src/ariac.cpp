@@ -7,6 +7,7 @@
 #include "osrf_gear/GetMaterialLocations.h"
 #include "osrf_gear/VacuumGripperControl.h"
 #include "osrf_gear/VacuumGripperState.h"
+#include "osrf_gear/AGVControl.h"
 #include "osrf_gear/LogicalCameraImage.h"
 #include "osrf_gear/Model.h"
 #include "sensor_msgs/JointState.h"
@@ -34,6 +35,11 @@ osrf_gear::GetMaterialLocations material_locations_srv;
 // Serivce client to command the gripper
 ros::ServiceClient gripper_client;
 osrf_gear::VacuumGripperControl gripper_control_srv;
+
+// Service client to submit orders
+ros::ServiceClient submit_order_client_1;
+ros::ServiceClient submit_order_client_2;
+osrf_gear::AGVControl submit_order_srv;
 
 // Object to keep track of the latest joint states
 sensor_msgs::JointState joint_states;
@@ -156,25 +162,18 @@ void moveArmToPosition(float x, float y, float z, ros::Duration duration = ros::
 		}
 	}
 
-	// Choose the solution that keeps the elbow joint as high as possible
-	double target_angle = 3.0 / 2.0 * M_PI; // The elbow is straight up when the shoulder joint is 3/2*pi
 	int best_solution_index = -1;
-	double best_angle = 10000; // Smaller is better, so this initial score will be beaten by any solution
 	for (int i = 0; i < num_sols; i++) {
-		double pan_angle = q_sols[i][0];
 		double shoulder_angle = q_sols[i][1];
 		double wrist_1_angle = q_sols[i][3];
 
-		// Ignore solutions where the base or wrist are pointed backwards
-		if (abs(M_PI - pan_angle) >= M_PI / 2 || abs(M_PI - wrist_1_angle) >= M_PI / 2) {
-			continue;
-		}
-
-		// Get the angle between the ideal shoulder angle and this solution's shoulder angle
-		double dist = std::min(fabs(shoulder_angle - target_angle), 2.0 * M_PI - fabs(shoulder_angle - target_angle));
-		if (dist < best_angle) {
-			best_angle = dist;
+		// Ignore solutions where the shoulder or wrist are pointed backwards
+		if (
+			abs(M_PI - wrist_1_angle) <= M_PI / 2 &&
+			shoulder_angle >= 4 * M_PI / 3
+			) {
 			best_solution_index = i;
+			break;
 		}
 	}
 
@@ -216,7 +215,6 @@ void moveBaseToPosition(float goal_pos, ros::Duration duration = ros::Duration(2
 		}
 	}
 
-
 	// Set the linear_arm_actuator_joint to the goal position.
 	joint_trajectory.points[1].positions[0] = goal_pos;
 
@@ -229,7 +227,7 @@ void moveBaseToPosition(float goal_pos, ros::Duration duration = ros::Duration(2
 }
 
 void moveArmHome() {
-	moveArmToPosition(-0.4, 0, 0.2);
+	moveArmToPosition(-0.4, 0.1, 0.1);
 }
 
 void grabOrReleasePart(float x, float y, float z, bool grab) {
@@ -238,7 +236,7 @@ void grabOrReleasePart(float x, float y, float z, bool grab) {
 
 	while(!(gripper_state.attached == grab) && ros::ok()) {	
 		ros::Duration(0.5).sleep();
-		moveArmToPosition(x, y, z + 0.0075);
+		moveArmToPosition(x, y, z + 0.015);
 		ros::Duration(0.5).sleep();
 		gripper_control_srv.request.enable = grab;
 		succeeded = gripper_client.call(gripper_control_srv);
@@ -250,73 +248,6 @@ void grabOrReleasePart(float x, float y, float z, bool grab) {
 void ordersCallback(const osrf_gear::Order::ConstPtr& msg) {
 	ROS_INFO("Order received: [%s]", msg->order_id.c_str());
 	orders.push_back(msg);
-	std::string part_type = msg->shipments[0].products[0].type;
-	ROS_INFO("First product type: [%s]", part_type.c_str());
-	
-	// Query the location of the desired type of part
-	material_locations_srv.request.material_type = part_type;
-	int call_succeeded;
-	call_succeeded = material_locations_client.call(material_locations_srv);
-	
-	if(!call_succeeded) {
-		ROS_ERROR("Call to /ariac/material_locations failed!");
-		return;
-	}
-	std::string bin;
-	std::string unit_id = material_locations_srv.response.storage_units[0].unit_id;
-	if(unit_id == "belt") {
-		bin = material_locations_srv.response.storage_units.back().unit_id;
-	} else {
-		bin = unit_id;
-	}
-	ROS_INFO("This product can be found in bin [%s]", bin.c_str());
-	
-	// Search the logical camera images for the part
-	for(int i = 0; i < 10; i++) {
-		if(camera_topics[i].find(bin) != std::string::npos) {
-			// This camera topic matches the name of the bin
-			for(osrf_gear::Model model : logical_camera_images[i]->models) {
-				if(model.type == part_type) {
-					ROS_WARN("Model type: %s", model.type.c_str());
-					ROS_WARN("Bin number: %s", bin.c_str());
-					ROS_WARN("Part located at x=%f, y=%f, z=%f", model.pose.position.x, model.pose.position.y, model.pose.position.z);
-					
-					// Retrieve the transformation
-					geometry_msgs::TransformStamped tfStamped;
-					try {
-						tfStamped = tfBuffer.lookupTransform("arm1_base_link", "logical_camera_" + bin + "_frame", ros::Time(0.0), ros::Duration(1.0));
-					} catch (tf2::TransformException &ex) {
-						ROS_ERROR("%s", ex.what());
-					}
-					
-					// Create variables
-					geometry_msgs::PoseStamped part_pose, goal_pose;
-
-					// Copy pose from the logical camera.
-					part_pose.pose = model.pose;
-					tf2::doTransform(part_pose, goal_pose, tfStamped);
-					
-					// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
-					goal_pose.pose.orientation.w = 0.707;
-					goal_pose.pose.orientation.x = 0.0;
-					goal_pose.pose.orientation.y = 0.707;
-					goal_pose.pose.orientation.z = 0.0;
-					
-					grabOrReleasePart(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z, true);
-					ros::Duration(0.5).sleep();
-					moveArmHome();
-					ros::Duration(1.0).sleep();
-					moveBaseToPosition(2.1);
-					ros::Duration(3.0).sleep();
-					moveBaseToPosition(0);
-					ros::Duration(3.0).sleep();
-					grabOrReleasePart(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z, false);
-					ros::Duration(1.0).sleep();
-				}
-			}
-			break;
-		}
-	}
 }
 
 void logicalCameraCallback(int index, const osrf_gear::LogicalCameraImage::ConstPtr& msg) {
@@ -348,8 +279,12 @@ int main(int argc, char **argv) {
 	// Initialize service client for finding materials
 	material_locations_client = n.serviceClient<osrf_gear::GetMaterialLocations>("/ariac/material_locations");
 
-	// Initialize service client for activating the gripper
+	// Initialize service client for controlling the gripper
 	gripper_client = n.serviceClient<osrf_gear::VacuumGripperControl>("/ariac/arm1/gripper/control");
+
+	// Initialize service clients for controlling the agvs
+	submit_order_client_1 = n.serviceClient<osrf_gear::AGVControl>("/ariac/agv1");
+	submit_order_client_2 = n.serviceClient<osrf_gear::AGVControl>("/ariac/agv2");
 
 	// Subscribe to logical camera messages
 	std::vector<ros::Subscriber> camera_subs;
@@ -409,8 +344,151 @@ int main(int argc, char **argv) {
 	ros::AsyncSpinner spinner(4); // Use 4 threads
 	spinner.start();
 
-	ros::Rate loop_rate(0.1);
+	ros::Rate loop_rate(10);
 	while(ros::ok()) {
+		if (orders.size() > 0) {
+			// Pop an order from the front of the order queue
+			osrf_gear::Order::ConstPtr order = orders[0];
+			orders.erase(orders.begin());
+			ROS_INFO("Processing order [%s]", order->order_id.c_str());
+			
+			for (osrf_gear::Shipment shipment : order->shipments) {
+				bool agv1 = shipment.agv_id == "agv1";
+
+				for (osrf_gear::Product product : shipment.products) {
+					std::string part_type = product.type;
+					ROS_INFO("Product type: [%s]", part_type.c_str());
+					
+					// Query the location of the desired type of part
+					material_locations_srv.request.material_type = part_type;
+					int call_succeeded;
+					call_succeeded = material_locations_client.call(material_locations_srv);
+					
+					if(!call_succeeded) {
+						ROS_ERROR("Call to /ariac/material_locations failed!");
+						continue;
+					}
+					std::string bin;
+					std::string unit_id = material_locations_srv.response.storage_units[0].unit_id;
+					if(unit_id == "belt") {
+						bin = material_locations_srv.response.storage_units.back().unit_id;
+					} else {
+						bin = unit_id;
+					}
+					ROS_INFO("This product can be found in bin [%s]", bin.c_str());
+					
+					bool done = false;
+
+					// Search the logical camera images for the part
+					for(int i = 0; i < 10; i++) {
+						if(camera_topics[i].find(bin) != std::string::npos) {
+							// This camera topic matches the name of the bin
+							for(osrf_gear::Model model : logical_camera_images[i]->models) {
+								if(model.type == part_type) {
+									ROS_INFO("Model type: %s", model.type.c_str());
+									ROS_INFO("Bin number: %s", bin.c_str());
+									ROS_INFO("Part located at x=%f, y=%f, z=%f", model.pose.position.x, model.pose.position.y, model.pose.position.z);
+									
+									double base_pos;
+									if (bin == "bin4") {
+										base_pos = 0.0;
+									} else if (bin == "bin5") {
+										base_pos = 0.5;
+									} else if (bin == "bin6") {
+										base_pos = 1.5;
+									}
+
+									moveBaseToPosition(base_pos);
+									ros::Duration(4.0).sleep();
+
+									// Retrieve the transformation
+									geometry_msgs::TransformStamped tfStamped;
+									try {
+										tfStamped = tfBuffer.lookupTransform("arm1_base_link", "logical_camera_" + bin + "_frame", ros::Time(0.0), ros::Duration(1.0));
+									} catch (tf2::TransformException &ex) {
+										ROS_ERROR("%s", ex.what());
+									}
+									
+									// Create variables
+									geometry_msgs::PoseStamped part_pose, goal_pose;
+
+									// Copy pose from the logical camera.
+									part_pose.pose = model.pose;
+									tf2::doTransform(part_pose, goal_pose, tfStamped);
+									
+									// Tell the end effector to rotate 90 degrees around the y-axis (in quaternions...).
+									goal_pose.pose.orientation.w = 0.707;
+									goal_pose.pose.orientation.x = 0.0;
+									goal_pose.pose.orientation.y = 0.707;
+									goal_pose.pose.orientation.z = 0.0;
+									
+									// Pickup part
+									grabOrReleasePart(goal_pose.pose.position.x, goal_pose.pose.position.y, goal_pose.pose.position.z, true);
+									ros::Duration(0.5).sleep();
+									moveArmHome();
+									ros::Duration(1.0).sleep();
+
+									if (agv1) {
+										moveBaseToPosition(2.3);
+									} else {
+										moveBaseToPosition(-2.3);
+									}
+									ros::Duration(4.5).sleep();
+									
+
+									// Retrieve the transformation
+									try {
+										tfStamped = tfBuffer.lookupTransform("arm1_base_link", agv1 ? "kit_tray_1" : "kit_tray_2", ros::Time(0.0), ros::Duration(1.0));
+									} catch (tf2::TransformException &ex) {
+										ROS_ERROR("%s", ex.what());
+									}
+
+									geometry_msgs::PoseStamped target_pose, agv_goal_pose;
+
+									target_pose.pose = product.pose;
+									tf2::doTransform(target_pose, agv_goal_pose, tfStamped);
+
+									grabOrReleasePart(agv_goal_pose.pose.position.x, agv_goal_pose.pose.position.y, agv_goal_pose.pose.position.z, false);
+									ros::Duration(1.0).sleep();
+									moveArmHome();
+									ros::Duration(1.0).sleep();
+
+									done = true;
+									break;
+								}
+							}
+						}
+						if (done) break;
+					}
+					ROS_INFO("Finished product");
+				}
+
+				bool call_succeeded;
+				submit_order_srv.request.shipment_type = shipment.shipment_type;
+				if (agv1) {
+					call_succeeded = submit_order_client_1.call(submit_order_srv);
+				} else {
+					call_succeeded = submit_order_client_2.call(submit_order_srv);
+				}
+				
+				if (call_succeeded) {
+					if (call_succeeded)
+					ROS_WARN("Shipment %s with message \"%s\"", submit_order_srv.response.success ? "succeeded" : "failed", submit_order_srv.response.message.c_str());
+				} else {
+					ROS_ERROR("Failed to call service to notify agv");
+				}
+			}
+
+			// if (orders.size() == 0) {
+			// 	ros::ServiceClient end_client = n.serviceClient<std_srvs::Trigger>("/ariac/end_competition");
+			// 	// End the competition
+			// 	std_srvs::Trigger end_comp;
+			// 	int service_call_succeeded;
+			// 	service_call_succeeded = end_client.call(end_comp);
+				
+			// 	return 0;
+			// }
+		}
 		loop_rate.sleep();
 	}
 

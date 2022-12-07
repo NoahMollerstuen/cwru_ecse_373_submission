@@ -47,3 +47,6 @@ Loop over each shipment in each order and deliver each part in the shipment to t
 
 ## Theory of Operations
 ![Block diagram showing the theory of operations](Final Project Block Diagram.jpg)
+
+## Score Breakdown
+![Screenshot of terminal output showing ariac score breakdown](score_breakdown.png)

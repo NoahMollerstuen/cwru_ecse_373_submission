@@ -46,7 +46,7 @@ Use the vacuum gripper service to pickup each of the parts of the correct type. 
 Loop over each shipment in each order and deliver each part in the shipment to the correct AGV. Use the submit shipment topic to complete shipments and score points in the ariac competition.
 
 ## Theory of Operations
-![Block diagram showing the theory of operations](Final Project Block Diagram.jpg)
+![Block diagram showing the theory of operations](block_diagram.jpg)
 
 ## Score Breakdown
 ![Screenshot of terminal output showing ariac score breakdown](score_breakdown.png)
